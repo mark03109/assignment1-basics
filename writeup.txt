@@ -1,0 +1,13 @@
+Assignment1:
+problem1
+(a) a character can be called as null 
+(b) repr() returns '\x00', printed representation is nothing
+(c) print(chr(0)) prints nothing but add a "\n"
+    "this is a test" + chr(0) + "string" is actually 'this is a test\x00string'
+problem2
+(a) the same string will generate more bytes with utf-16 than utf-8; So training
+tokenizer with utf-8 cost less time
+(b) "你" is E4 BD A0 in utf-8, it should be decoded together instead one by one, 
+which will raise an error
+(c) bytes[200, 232] 200 is b'1100 1000', which means it expect the next byte start
+with 10, and the two bytes together refer to a character, but 232 is b'1110 1000'
