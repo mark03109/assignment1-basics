@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from collections import defaultdict
 from typing import IO, Any, BinaryIO
 
 import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
+import regex as re
+import pickle
 
 
 def run_linear(
@@ -561,6 +564,57 @@ def get_tokenizer(
     """
     raise NotImplementedError
 
+def count_adjacent_pairs(indices: list[int]) -> dict[tuple[int, int], int]:
+    """Return a dictionary mapping each adjacent pair of tokens in 'indices' to the number of times it occurs"""
+    counts = defaultdict(int)# create a dict with default value
+    for index1, index2 in zip(indices, indices[1:]):
+        counts[(index1, index2)] += 1
+    return counts
+
+def count_adjacent_pairs(indices: list[int], counts: dict[tuple[int, int]], times: int):
+    """Modify counts in the function"""
+    for index1, index2 in zip(indices, indices[1:]):
+        if((index1, index2) in counts):
+            counts[(index1, index2)] += 1 * times
+        else:
+            counts[index1, index2] = 1 * times
+    return
+
+def merge(indices: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
+    """Return 'indices', but with all instances of 'pair' replaced with 'new_index'"""
+    new_indices = []
+    i = 0
+    while i < len(indices):
+        if i + 1 < len(indices) and indices[i] == pair[0] and indices[i+1] == pair[1]:
+            new_indices.append(new_index)
+            i +=2
+        else:
+            new_indices.append(indices[i])
+            i += 1
+    return new_indices
+
+def read_with_specialtoken(fd: os.TextIOWrapper, special_tokens: list[str]) -> str| None:
+    string: str = ""
+    while (char := fd.read(1)):
+        string += char
+        for special_token in special_tokens:
+            if string[-len(special_token):] == special_token:
+                return string[: -len(special_token)]
+    return string if string else None
+
+        
+
+"""思路
+训练:
+1.按照正则将文章划分为单词集, 再将内部单词按最初的词表划分为token
+2.在一次更新中, 根据每个单词遍历, 寻找公共出现最多的相邻token对, 更新词表和merge对象, 并对原句的单词集的每个单词降解
+encode:
+1.将原文章按单词划分为单词集
+2.对每个单词按merge对象作讲解(这里要考虑一种最优算法, 一种完备的思路是对单词用每个merge对象遍历, 遇到匹配的就降解, 但效率低)
+decode:
+1.对list[int]做词表匹配即可
+"""
+
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -589,4 +643,63 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    word_dict: dict[str, int] = {} # 单词 -> 出现的次数
+    indices_dict: dict[str, list[int]] = {}# 单词 -> encode后的int列表
+
+    fd = open(input_path, mode = 'r', encoding="utf-8")
+
+    print("start pretokenization...")
+    while (paragraph := read_with_specialtoken(fd, special_tokens)) is not None:
+        if paragraph:
+            string_iter = re.finditer(PAT, paragraph)
+            while True:
+                try:
+                    temp_word = next(string_iter).group(0)
+                except StopIteration:
+                    break   
+                if(temp_word in word_dict):
+                    word_dict[temp_word] += 1
+                else:
+                    word_dict[temp_word] = 1
+                    indices_dict[temp_word] = list(map(int, temp_word.encode("utf-8")))
+
+    vocabulary: dict[int, bytes] = {}
+    merges: list[tuple[bytes, bytes]] = [] 
+    for i in range(256):
+        vocabulary[i] = chr(i).encode("utf-8")
+    for i in range(len(special_tokens)):
+        vocabulary[256 + i] = special_tokens[i].encode("utf-8") 
+
+    print("start training...")
+    if(vocab_size <= len(vocabulary)):
+        return vocabulary, {}
+    else:
+        for i in range(vocab_size - len(vocabulary)):   
+            counts: dict[tuple[int, int], int] = {}
+            for word in word_dict.keys():
+                if word in special_tokens:
+                    continue
+                count_adjacent_pairs(indices_dict[word], counts, word_dict[word])
+            try:
+                pair = max(counts, key = counts.get)
+            except ValueError:
+                break
+            pair_bytes = (vocabulary[pair[0]], vocabulary[pair[1]])
+            merges.append(pair_bytes)
+            new_index = 256 + len(special_tokens) + i
+            vocabulary[new_index] = vocabulary[pair[0]] + vocabulary[pair[1]]
+            for word in word_dict.keys():
+                indices_dict[word] = merge(indices = indices_dict[word], pair = pair, new_index = new_index)
+
+    return vocabulary, merges
     raise NotImplementedError
+
+if __name__ == "__main__":
+    vocab, merges = run_train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
+    with open("data/TinyStoriesV2-GPT4-train-vocab.pkl", "wb") as f1:
+        pickle.dump(vocab, f1)
+
+    with open("data/TinyStoriesV2-GPT4-train-merges.pkl", "wb") as f2:
+        pickle.dump(merges, f2)
+    
