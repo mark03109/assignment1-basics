@@ -40,5 +40,5 @@
 # s = "你好"
 # print(decode_utf8_bytes_to_str_wrong(s.encode("utf-8")))
 
-string_encode = bytes([200, 232])
-print(string_encode.decode("utf-8"))
+string_encode = bytes("你好", encoding = "utf=8")
+print(string_encode[0])
