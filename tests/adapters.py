@@ -8,10 +8,12 @@ from typing import IO, Any, BinaryIO
 import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
-from torch import Tensor
+from torch import Tensor, nn
 import regex as re
 import pickle
+from cs336_basics.module import LinearModule, EmbeddingModule
 
+device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
 def run_linear(
     d_in: int,
@@ -32,6 +34,9 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
+    linear_module = LinearModule(d_in, d_out, device=device)
+    linear_module.load_state_dict({"weight": weights})
+    return linear_module.forward(in_features)
     raise NotImplementedError
 
 
@@ -53,6 +58,10 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
+    embedding_module = EmbeddingModule(vocab_size, d_model)
+    embedding_module.load_state_dict({"weight": weights})
+    return embedding_module(token_ids)    
+    
 
     raise NotImplementedError
 
