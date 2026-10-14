@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 import regex as re
 import pickle
-from cs336_basics.module import LinearModule, EmbeddingModule
+from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -95,6 +95,14 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
+    swiglu = Swiglu(d_model, d_ff)
+    swiglu.weight1.data = w1_weight
+    swiglu.weight2.data = w2_weight
+    swiglu.weight3.data = w3_weight
+
+
+    return swiglu(in_features)
+
     raise NotImplementedError
 
 
