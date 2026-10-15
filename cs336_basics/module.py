@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import math
-from einops import einsum
+from einops import einsum, rearrange
 from typing import IO, Any, BinaryIO
 
 class LinearModule(torch.nn.Module):
@@ -79,3 +79,45 @@ class Swiglu(nn.Module):
         return einsum(self.weight2, mul3, 
                       "d_model d_ff, ... d_ff -> ... d_model")
 
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device = None):
+        super().__init__()
+        self.theata = theta
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        self.device = device
+
+        positions = torch.arange(max_seq_len, dtype = torch.float32, device = device)
+        pair_indicies = torch.arange(d_k // 2, dtype = torch.float32, device = device)
+        inv_freq = theta ** (-2 * pair_indicies / d_k)
+        angles = positions[:, None] * inv_freq[None, :]
+
+        self.register_buffer(
+            "cos_cache", angles.cos(), persistent = False
+        ) # [max_seq_len, d_k//2]
+        self.register_buffer(
+            "sin_cache", angles.sin(), persistent = False
+        ) # [max_seq_len, d_k//2]
+
+    def forward(self, x: torch.tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        # x [..., seq_len, d_k], token_positions [..., seq_len]
+        
+        cos = self.cos_cache[token_positions] # [seq_len, d_k//2]
+        sin = self.sin_cache[token_positions] # [seq_len, d_k//2]
+
+        x_even = x[..., 0::2] # [..., seq, d_k//2]
+        x_odd = x[..., 1::2]  # [..., seq, d_k//2]
+
+        # y_even = einsum(cos, x_even,
+        #                 "seq_len d_k//2, ... seq_len d_k//2 -> ... seq_len d_k//2"
+        #                     ) - \
+        #          einsum(sin, x_odd, 
+        #                 "seq_len d_k//2, ... seq_len d_k//2 -> ... seq_len d_k//2"
+        #                     )
+        y_even = x_even * cos - x_odd * sin
+        y_odd = x_even * sin + x_odd * cos
+        # 按元素乘对应正余弦值
+
+        y = torch.stack((y_even, y_odd), dim = -1) # (..., seq_len, d_k//2, 2)
+        return rearrange(y, "... seq_len pairs r -> ... seq_len (pairs r)")
+        

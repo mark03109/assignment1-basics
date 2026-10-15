@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 import regex as re
 import pickle
-from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu
+from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu, RotaryPositionalEmbedding
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -220,6 +220,8 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
+    rope = RotaryPositionalEmbedding(theta, d_k, max_seq_len)
+    return rope(in_query_or_key, token_positions)
     raise NotImplementedError
 
 
