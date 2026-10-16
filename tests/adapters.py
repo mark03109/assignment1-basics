@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 import regex as re
 import pickle
-from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu, RotaryPositionalEmbedding
+from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu, RotaryPositionalEmbedding, MyFunctions
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -453,6 +453,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
+    return MyFunctions.softmax(in_features, dim)
     raise NotImplementedError
 
 

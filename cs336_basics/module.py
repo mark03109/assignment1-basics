@@ -120,4 +120,46 @@ class RotaryPositionalEmbedding(nn.Module):
 
         y = torch.stack((y_even, y_odd), dim = -1) # (..., seq_len, d_k//2, 2)
         return rearrange(y, "... seq_len pairs r -> ... seq_len (pairs r)")
-        
+
+class MyFunctions:
+    def softmax(x: torch.Tensor, dim) -> torch.Tensor:
+        max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
+        x = x - max_val
+        x = math.e**x
+        return x / x.sum(dim = dim, keepdim=True)
+
+def _softmax_trial():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    x = torch.randn(4, 4, device=device)
+    y = MyFunctions.softmax(x = x, dim = -1)
+    """
+    x
+    tensor([[-1.0103, -0.7683, -1.0513,  1.6759],
+            [ 0.6275, -0.5929, -0.3640, -1.2443],
+            [ 1.0463, -0.4980, -0.0292,  0.0455],
+            [ 0.1790,  0.9046,  0.5002, -1.2187]])
+
+    max_val
+    tensor([[1.6759],
+            [0.6275],
+            [1.0463],
+            [0.9046]])
+
+    x
+    tensor([[-2.6862, -2.4442, -2.7273,  0.0000],
+            [ 0.0000, -1.2204, -0.9915, -1.8719],
+            [ 0.0000, -1.5443, -1.0755, -1.0008],
+            [-0.7256,  0.0000, -0.4044, -2.1233]])
+            
+    x
+    tensor([[0.0681, 0.0868, 0.0654, 1.0000],
+            [1.0000, 0.2951, 0.3710, 0.1538],
+            [1.0000, 0.2135, 0.3411, 0.3676],
+            [0.4840, 1.0000, 0.6674, 0.1196]])
+
+    y
+    tensor([[0.2233, 0.2845, 0.2144, 3.2778],
+            [2.1979, 0.6486, 0.8154, 0.3381],
+            [2.0810, 0.4442, 0.7099, 0.7649],
+            [0.8525, 1.7613, 1.1754, 0.2107]])
+    """
