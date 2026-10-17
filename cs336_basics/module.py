@@ -128,6 +128,18 @@ class MyFunctions:
         x = math.e**x
         return x / x.sum(dim = dim, keepdim=True)
 
+    def scaled_dot_product_attention(K: torch.Tensor, Q: torch.Tensor, V: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """keys and queries are of shape (batch_size, ..., seq_len, d_k), 
+        values (batch_size, ..., seq_len, d_v)"""
+        qk = einsum(Q, K, 
+                    "batch_size ... seq_len1 d_k, batch_size ... seq_len2 d_k -> batch_size ... seq_len1 seq_len2")
+        if mask is not None:
+            qk = qk.masked_fill(~mask, float("-inf"))
+        scores = qk / math.sqrt(Q.shape[-1])
+        scores_sm =  MyFunctions.softmax(scores, -1)
+        return einsum(scores_sm, V,
+                      "batch_size ... seq_len1 seq_len2, batch_size ... seq_len2 d_v -> batch_size ... seq_len1 d_v")
+    
 def _softmax_trial():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     x = torch.randn(4, 4, device=device)
@@ -163,3 +175,4 @@ def _softmax_trial():
             [2.0810, 0.4442, 0.7099, 0.7649],
             [0.8525, 1.7613, 1.1754, 0.2107]])
     """
+
