@@ -100,7 +100,7 @@ class RotaryPositionalEmbedding(nn.Module):
         ) # [max_seq_len, d_k//2]
 
     def forward(self, x: torch.tensor, token_positions: torch.Tensor) -> torch.Tensor:
-        # x [..., seq_len, d_k], token_positions [..., seq_len]
+        # x [..., seq_len, d_k], token_positions [..., seq_len], d_k is dimension of query and key vectors
         
         cos = self.cos_cache[token_positions] # [seq_len, d_k//2]
         sin = self.sin_cache[token_positions] # [seq_len, d_k//2]
@@ -121,6 +121,41 @@ class RotaryPositionalEmbedding(nn.Module):
         y = torch.stack((y_even, y_odd), dim = -1) # (..., seq_len, d_k//2, 2)
         return rearrange(y, "... seq_len pairs r -> ... seq_len (pairs r)")
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads, device = None, dtype = None, rope: RotaryPositionalEmbedding | None = None):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        assert d_model % num_heads == 0
+        self.d_head = d_model // num_heads
+        self.Wq = LinearModule(d_model, d_model, device, dtype)
+        self.Wk = LinearModule(d_model, d_model, device, dtype)
+        self.Wv = LinearModule(d_model, d_model, device, dtype)
+        self.Wo = LinearModule(d_model, d_model, device, dtype)
+        self.rope = rope
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
+        """x shape (... sequence_length d_model)"""
+        Q = self.Wq(x)
+        K = self.Wk(x)
+        V = self.Wv(x)
+        seq_len = x.shape[-2]
+        if self.rope is None:
+            multi_Q = rearrange(Q, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+            multi_K = rearrange(K, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+            multi_V = rearrange(V, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+        else:
+            multi_Q = rearrange(Q, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+            multi_K = rearrange(K, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+            multi_V = rearrange(V, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
+            multi_Q = self.rope(multi_Q, token_positions)
+            multi_K = self.rope(multi_K, token_positions)
+        mask = torch.ones(seq_len, seq_len, device=x.device, dtype= bool).tril()
+        muti_attention =MyFunctions.scaled_dot_product_attention(multi_Q, multi_K, multi_V, mask)
+        attention = rearrange(muti_attention, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
+        return self.Wo(attention)
+
+
 class MyFunctions:
     def softmax(x: torch.Tensor, dim) -> torch.Tensor:
         max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
@@ -128,7 +163,7 @@ class MyFunctions:
         x = math.e**x
         return x / x.sum(dim = dim, keepdim=True)
 
-    def scaled_dot_product_attention(K: torch.Tensor, Q: torch.Tensor, V: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def scaled_dot_product_attention( Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """keys and queries are of shape (batch_size, ..., seq_len, d_k), 
         values (batch_size, ..., seq_len, d_v)"""
         qk = einsum(Q, K, 

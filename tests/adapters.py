@@ -12,6 +12,7 @@ from torch import Tensor, nn
 import regex as re
 import pickle
 from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu, RotaryPositionalEmbedding, MyFunctions
+from cs336_basics.module import MultiHeadAttention
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -124,7 +125,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    return MyFunctions.scaled_dot_product_attention(K, Q, V, mask)
+    return MyFunctions.scaled_dot_product_attention(Q, K, V, mask)
     raise NotImplementedError
 
 
@@ -159,6 +160,12 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    attention = MultiHeadAttention(d_model, num_heads)
+    attention.Wq.weight.data = q_proj_weight
+    attention.Wk.weight.data = k_proj_weight
+    attention.Wv.weight.data = v_proj_weight
+    attention.Wo.weight.data = o_proj_weight
+    return attention(in_features)
     raise NotImplementedError
 
 
@@ -199,6 +206,15 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    assert d_model % num_heads == 0
+    d_head = d_model // num_heads
+    rope = RotaryPositionalEmbedding(theta, d_head, max_seq_len)
+    attention = MultiHeadAttention(d_model, num_heads, rope= rope)
+    attention.Wq.weight.data = q_proj_weight
+    attention.Wk.weight.data = k_proj_weight
+    attention.Wv.weight.data = v_proj_weight
+    attention.Wo.weight.data = o_proj_weight
+    return attention(in_features, token_positions)
     raise NotImplementedError
 
 
