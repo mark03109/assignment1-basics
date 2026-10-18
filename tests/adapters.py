@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 import regex as re
 import pickle
-from cs336_basics.module import LinearModule, EmbeddingModule, Swiglu, RotaryPositionalEmbedding, MyFunctions
+from cs336_basics.module import LinearModule, EmbeddingModule, RMSNorm, Swiglu, RotaryPositionalEmbedding, MyFunctions
 from cs336_basics.module import MultiHeadAttention
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
@@ -312,6 +312,32 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
+    assert d_model % num_heads == 0
+    d_head = d_model // num_heads
+
+    rms_norm1 = RMSNorm(d_model=d_model)
+    rms_norm1.load_state_dict({"g": weights["ln1.weight"]})
+    rms_norm2 = RMSNorm(d_model=d_model)
+    rms_norm2.load_state_dict({"g": weights["ln2.weight"]})
+    rope = RotaryPositionalEmbedding(theta=theta, d_k=d_head, max_seq_len=max_seq_len)
+    attention = MultiHeadAttention(d_model, num_heads, rope=rope)
+    attention.load_state_dict({
+        "Wq.weight": weights["attn.q_proj.weight"],
+        "Wk.weight": weights["attn.k_proj.weight"],
+        "Wv.weight": weights["attn.v_proj.weight"],
+        "Wo.weight": weights["attn.output_proj.weight"],
+        })
+    fnn = Swiglu(d_model, d_ff)
+    fnn.load_state_dict({
+        "weight1": weights["ffn.w1.weight"],
+        "weight2": weights["ffn.w2.weight"],
+        "weight3": weights["ffn.w3.weight"],
+    })
+
+    in_features += attention(rms_norm1(in_features))
+    in_features += fnn(rms_norm2(in_features))
+
+    return in_features
     raise NotImplementedError
 
 

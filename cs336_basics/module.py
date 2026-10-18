@@ -30,14 +30,18 @@ class EmbeddingModule(nn.Module):
 
 class RMSNorm(nn.Module):
     def __init__(self, d_model: int, eps: float = 1e-5, device = None, dtype = None):
+        super().__init__()
         self.g = nn.Parameter(torch.randn(d_model, device = device, dtype = dtype))
         self.eps = eps
 
     def rms_norm(self, x: torch.Tensor, dim = -1):
         mean_square = x.square().mean(dim = dim) + self.eps
-        return einsum(x, torch.rsqrt(mean_square), 
-                      "batch_size sequence_length d_model, batch_size, sequence_length -> batch_size sequence_length d_model")
-     
+        rms = einsum(x, torch.rsqrt(mean_square), 
+                      "batch_size sequence_length d_model, batch_size sequence_length -> batch_size sequence_length d_model")
+        rms = einsum(rms, self.g,
+                     "batch_size sequence_length d_model, d_model -> batch_size sequence_length d_model")
+        return rms
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         in_dtype = x.dtype
         x = x.to(torch.float32)
@@ -145,6 +149,8 @@ class MultiHeadAttention(nn.Module):
             multi_K = rearrange(K, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
             multi_V = rearrange(V, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
         else:
+            if token_positions is None:
+                token_positions = torch.arange(seq_len, device = x.device)
             multi_Q = rearrange(Q, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
             multi_K = rearrange(K, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
             multi_V = rearrange(V, "... seq_len (num_heads d_head) -> ... num_heads seq_len d_head", num_heads = self.num_heads, d_head = self.d_head)
@@ -155,7 +161,7 @@ class MultiHeadAttention(nn.Module):
         attention = rearrange(muti_attention, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
         return self.Wo(attention)
 
-
+        
 class MyFunctions:
     def softmax(x: torch.Tensor, dim) -> torch.Tensor:
         max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
