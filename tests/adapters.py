@@ -12,7 +12,7 @@ from torch import Tensor, nn
 import regex as re
 import pickle
 from cs336_basics.module import LinearModule, EmbeddingModule, RMSNorm, Swiglu, RotaryPositionalEmbedding, MyFunctions
-from cs336_basics.module import MultiHeadAttention
+from cs336_basics.module import MultiHeadAttention, TransformerBlock, TransformerLM
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -420,6 +420,39 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
+    
+    assert d_model % num_heads == 0
+    d_head = d_model // num_heads 
+    ropes: list[RotaryPositionalEmbedding] = []
+    for i in range(num_layers):
+        ropes.append(RotaryPositionalEmbedding(theta = rope_theta, d_k = d_head, max_seq_len= context_length))
+    transformer_lm = TransformerLM(d_model, num_heads, d_ff, vocab_size, context_length, num_layers, ropes = ropes)
+    transformer_lm.embedding.load_state_dict({"weight": weights["token_embeddings.weight"]})
+    for i in range(num_layers):
+        transformer_lm.transformer_blocks[i].muti_head_attention.load_state_dict({
+            "Wq.weight": weights[f"layers.{i}.attn.q_proj.weight"],
+            "Wk.weight": weights[f"layers.{i}.attn.k_proj.weight"],
+            "Wv.weight": weights[f"layers.{i}.attn.v_proj.weight"],
+            "Wo.weight": weights[f"layers.{i}.attn.output_proj.weight"],
+            })
+        transformer_lm.transformer_blocks[i].rms_norm1.load_state_dict({
+            "g": weights[f"layers.{i}.ln1.weight"]
+        })
+        transformer_lm.transformer_blocks[i].rms_norm2.load_state_dict({
+            "g": weights[f"layers.{i}.ln2.weight"] 
+        })
+        transformer_lm.transformer_blocks[i].fnn.load_state_dict({
+            "weight1": weights[f"layers.{i}.ffn.w1.weight"],
+            "weight2": weights[f"layers.{i}.ffn.w2.weight"],
+            "weight3": weights[f"layers.{i}.ffn.w3.weight"],
+        })
+    transformer_lm.extra_norm.load_state_dict({
+        "g": weights["ln_final.weight"]
+    })
+    transformer_lm.linear.load_state_dict({
+        "weight": weights["lm_head.weight"]
+    })
+    return transformer_lm(in_indices)
     raise NotImplementedError
 
 
