@@ -161,7 +161,41 @@ class MultiHeadAttention(nn.Module):
         attention = rearrange(muti_attention, "... num_heads seq_len d_head -> ... seq_len (num_heads d_head)")
         return self.Wo(attention)
 
-        
+class TransformerBlock(nn.Moudele):
+    def __init__(self, d_model, num_heads, d_ff, device = None, dtype = None, rope: RotaryPositionalEmbedding | None = None):
+        """we only pass RoPE from outside here"""
+        super().__init__()
+        self.muti_head_attention = MultiHeadAttention(d_model, num_heads, device, dtype, rope)
+        self.rms_norm1 = RMSNorm(d_model)
+        self.rms_norm2 = RMSNorm(d_model)
+        self.rope = rope
+        self.fnn = Swiglu(d_model, d_ff)     
+
+    def forward(self, x: torch.Tensor):
+        x += self.muti_head_attention(self.rms_norm1(x))
+        x += self.fnn(self.rms_norm2(x))
+        return x  
+
+class TransformerLM(nn.Module):
+    def __init__(self, d_model, num_heads, d_ff, vocab_size, context_length, num_layers, 
+                 device = None, dtype = None, ropes: list[RotaryPositionalEmbedding] | None = None):
+        super().__init__()
+        self.num_layers = num_layers
+        self.embedding = EmbeddingModule(vocab_size, d_model)
+        self.transformer_blocks: list[TransformerBlock] = []
+        for i in range(num_layers):
+            self.transformer_blocks.append(TransformerBlock(d_model, num_heads, d_ff, device, dtype, ropes[i]))
+        self.extra_norm = RMSNorm(d_model)
+        self.linear = LinearModule(d_model, vocab_size)
+
+    def forward(self, x: torch.Tensor):
+        x = self.embedding(x)
+        for i in range(self.num_layers):
+            x = self.transformer_blocks[i](x)
+        x = self.extra_norm(x)
+        x = self.linear(x)
+        x = MyFunctions.softmax(x, dim = -1)
+
 class MyFunctions:
     def softmax(x: torch.Tensor, dim) -> torch.Tensor:
         max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
