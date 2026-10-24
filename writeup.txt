@@ -11,3 +11,55 @@ tokenizer with utf-8 cost less time
 which will raise an error
 (c) bytes[200, 232] 200 is b'1100 1000', which means it expect the next byte start
 with 10, and the two bytes together refer to a character, but 232 is b'1110 1000'
+
+problem(transformer_accounting)
+    decoding procedure: token_embedding  -> transformer_block * num_layers -> norm -> linear_embedding -> softmax
+    transformer_block: norm -> rope/multihead-self-attention -> norm -> ffn
+
+(a) token_embedding: vocab_size * d_model = 50257 * 1600
+    norm: d_model = 1600
+    rope: \no trainable parameters
+    multihead_self_attention = 4 * d_model * d_model = 4 * 1600 * 1600
+    fnn: 3 * d_model * d_ff = 3 * 1600 * 4288
+    linear_embedding: d_model * vocab_size = 1600 * 50257
+
+    number_of_trainable_parameters 
+    = token_embedding + (num_layers * 2 + 1) * norm + num_layers * multihead_self_attention +
+      num_layers * fnn + linear_embedding
+    = 2 * 50257 * 1600 + (2 * 48 + 1) * 1600 + 48 * 4 * 1600 * 1600 + 48 * 3 * 1600 * 4288
+    = 161,843,200 + 156,800 + 491,520,000 + 987,110,400
+    = 1,640,630,400
+
+    memory_cost = number_of_trainable_parameters * 4 bytes = 1,640,630,400 * 4 = 6,562,521,600 bytes = 6.11 GB
+         
+(b) input_seqence_length = context_length = 1024
+    norm: 2 *input_seqence_length * d_model = 2 * 1024 * 1600
+    rope: 2 * 4 * context_length * d_model / 2 = 4 * 1024 * 1600
+    multihead_self_attention = 2 * 4 * input_seqence_length * d_model * d_model +  input_seqence_length * d_model * d_model
+                               + 2 * 2 * input_seqence_length * input_seqence_length * d_model = 2 * 3 * 1024 * 1600 * 1600 + 3 * 1024 * 1600 * 1600 + 1024 * 1024 * 1600
+                               = 9 * 1024 * 1600 * 1600 + 1024 * 1024 * 1600
+    fnn: 2 * 3 * input_seqence_length * d_model * d_ff = 2 * 4 * 1024 * 1600 * 4288
+    linear_embedding: 2 * input_seqence_length * vocab_size * d_model = 2 * 1024 * 50257 * 1600
+
+    FLOPs = num_layers * (2 * norm + rope + multihead_self_attention + fnn) + norm + linear_embedding
+          = 48 * (2 * 2 * 1024 * 1600 + 4 * 1024 * 1600 + 9 * 1024 * 1600 * 1600 + 1024 * 1024 * 1600 + 2 * 3 * 1024 * 1600 * 4288) + (2 * 2 * 1024 * 1600 + 2 * 1024 * 50257 * 1600)
+          = 48 * (6,553,600,000 + 13,107,200 + 23,932,800,000 + 1,638,400,000 + 42,467,840,000) + (6,553,600,000 + 164,505,600)
+          = 48 * (74,598,847,200) + (6,718,105,600)
+          = 3.5807e+12
+
+(c) the multihead self attention part require the most FLOPS
+
+(d) more: multihead self attention
+    less: linear embedding
+    unsure: norm, rope, fnn
+
+    FLOPs for GPT-2 small: 425,808,887,808.0
+    Percentage FLOPs for GPT-2 small: {'norm': 0.009234565347478225, 'rope': 0.008865182733579096, 'multihead_self_attention': 24.396982882809674, 'fnn': 57.02085534238075, 'linear_embedding': 18.564062026728525}
+    FLOPs for GPT-2 medium: 1,088,073,760,768.0
+    Percentage FLOPs for GPT-2 medium: {'norm': 0.009444253846124195, 'rope': 0.009251513971713496, 'multihead_self_attention': 30.789038497862514, 'fnn': 59.5057378660612, 'linear_embedding': 9.686527868258441}
+    FLOPs for GPT-2 large: 2,082,980,495,360.0
+    Percentage FLOPs for GPT-2 large: {'norm': 0.009187081704618964, 'rope': 0.009061231270309115, 'multihead_self_attention': 35.37504687928678, 'fnn': 58.28183953062822, 'linear_embedding': 6.324865277110072}
+    FLOPs for GPT-2 XL: 3,643,231,436,800.0
+
+(e) the FLOPS percentage of linear-embedding, norm, rope, fnn parts all decrease by 2 times
+    whiel the FLOPS percentage of multihead self attention part increase by 2 times
