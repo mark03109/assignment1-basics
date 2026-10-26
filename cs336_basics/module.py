@@ -198,7 +198,7 @@ class TransformerLM(nn.Module):
         return x
 
 class MyFunctions:
-    def softmax(x: torch.Tensor, dim) -> torch.Tensor:
+    def softmax(x: torch.Tensor, dim = -1) -> torch.Tensor:
         max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
         x = x - max_val
         x = math.e**x
@@ -216,6 +216,15 @@ class MyFunctions:
         return einsum(scores_sm, V,
                       "batch_size ... seq_len1 seq_len2, batch_size ... seq_len2 d_v -> batch_size ... seq_len1 d_v")
     
+    def cross_entropy(logits: torch.Tensor, target):
+        """ -log(softmax(logitx)[target])"""
+        max_val = torch.max(logits, dim=-1, keepdim=True).values
+        logits = logits - max_val
+        e_sum = logits.exp().sum(dim=-1, keepdim=True)
+        losses = e_sum.log() - logits
+        target_losses = losses.gather(dim=-1, index=target.unsqueeze(-1)).squeeze(-1)
+        return target_losses.mean()
+
 def _softmax_trial():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     x = torch.randn(4, 4, device=device)

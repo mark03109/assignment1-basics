@@ -548,6 +548,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
+    return MyFunctions.cross_entropy(inputs, targets)
     raise NotImplementedError
 
 
