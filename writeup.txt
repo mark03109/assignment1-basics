@@ -63,3 +63,43 @@ problem(transformer_accounting)
 
 (e) the FLOPS percentage of linear-embedding, norm, rope, fnn parts all decrease by 2 times
     whiel the FLOPS percentage of multihead self attention part increase by 2 times
+
+problem(learning_rate_tuning)
+the results are:
+
+23.849340438842773
+15.26357650756836
+11.251656532287598
+8.80321979522705
+7.130609035491943
+5.912091255187988
+4.986064910888672
+4.260735034942627
+3.6794791221618652
+3.205235004425049
+
+23.849340438842773
+23.849336624145508
+4.0918989181518555
+0.09792835265398026
+7.306709358574038e-17
+8.143781314173913e-19
+2.742297601069354e-20
+1.6336056762227408e-21
+1.4014124078670862e-22
+1.557124967751065e-23
+
+23.849340438842773
+8609.6103515625
+1487015.25
+165414560.0
+13398578176.0
+845603733504.0
+43410534694912.0
+1867706793984000.0
+6.883968428068045e+16
+2.210518924498305e+18
+
+With a learning rate of 10, the loss decreased steadily; 
+at 100, it stayed nearly unchanged after the first step, then rapidly approached zero as the step size decayed. 
+At 1000, the loss diverged, reaching about 2.2e18 after ten iterations.

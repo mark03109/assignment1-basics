@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import math
 from einops import einsum, rearrange
-from typing import IO, Any, BinaryIO
+from typing import Callable, Optional
 
 class LinearModule(torch.nn.Module):
     def __init__(self, in_features, out_features, device=None, dtype=None):
@@ -197,6 +197,47 @@ class TransformerLM(nn.Module):
         x = self.linear(x)
         return x
 
+"""关于Optimizer的一些语法问题
+1.super().__init__()中传入的params通常是list[dict]
+2.loss.backward()会默认把新计算的梯度累加到参数的.grad中, 所以需要opt.zero_grad()清空参数
+"""
+
+class SGD(torch.optim.Optimizer):
+    def __init__(self, paramas, lr=1e-3):
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        defaults = {"lr": lr}
+        super().__init__(paramas, defaults)
+
+    def step(self, closure: Optional[Callable] | None = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                state = self.state[p]
+                t = state.get("t", 0)
+                grad = p.grad.data
+                p.data -= lr/math.sqrt(t+1) * grad
+                state["t"] = t+1
+        return loss
+
+def _sgd_trial():
+    weight = torch.nn.Parameter(5 * torch.randn(10, 10))
+    lrs = [1e1, 1e2, 1e3]
+    weights = [torch.nn.Parameter(weight.detach().clone())
+               for _ in lrs]
+    opts = [SGD([w], lr)
+            for w, lr in zip(weights, lrs)]
+    for i in range(len(lrs)):
+        for j in range(10):
+            opts[i].zero_grad()            
+            loss = (weights[i]**2).mean()
+            print(loss.cpu().item())
+            loss.backward()
+            opts[i].step()
+
 class MyFunctions:
     def softmax(x: torch.Tensor, dim = -1) -> torch.Tensor:
         max_val = torch.max(x, dim=dim, keepdim=True).values # keepdim很关键，保持原来的张量形状，方便广播
@@ -261,3 +302,5 @@ def _softmax_trial():
             [0.8525, 1.7613, 1.1754, 0.2107]])
     """
 
+if __name__ == "__main__":
+    _sgd_trial()
