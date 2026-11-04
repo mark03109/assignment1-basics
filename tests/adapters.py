@@ -13,6 +13,7 @@ import regex as re
 import pickle
 from cs336_basics.module import LinearModule, EmbeddingModule, RMSNorm, Swiglu, RotaryPositionalEmbedding, MyFunctions
 from cs336_basics.module import MultiHeadAttention, TransformerBlock, TransformerLM
+from cs336_basics.module import AdamW
 
 device = torch.device("cuda"if torch.cuda.is_available() else "cpu")
 
@@ -568,6 +569,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
+    return AdamW
     raise NotImplementedError
 
 

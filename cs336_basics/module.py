@@ -223,6 +223,49 @@ class SGD(torch.optim.Optimizer):
                 state["t"] = t+1
         return loss
 
+class AdamW(torch.optim.Optimizer):
+    def __init__(self, params, lr, weight_decay, betas: tuple, eps = 1e-8):
+        """learning rate: lr, (me1, me2) control the updates of moments estimate, weight decay rate: dr"""
+        if lr < 0:
+            raise ValueError(f"Invalid leraning rate: {lr}")
+        if betas[0] > 1 or betas[1] > 1:
+            raise ValueError(f"Invalid moments estimate: {betas}")
+        
+        defaults = {
+            "lr": lr,
+            "betas": betas,
+            "weight_decay": weight_decay,
+            "eps": eps
+                    }
+        super().__init__(params, defaults)
+
+    def step(self, closure: Optional[Callable] | None = None):
+        loss = None if closure is None else closure
+        for group in self.param_groups:
+            lr = group["lr"]
+            beta1 = group["betas"][0]
+            beta2 = group["betas"][1]
+            weight_decay = group["weight_decay"]
+            eps = group["eps"]
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                state = self.state[p]
+                t = state.get("t", 1)
+                m = state.get("m", torch.zeros_like(p.data))
+                v = state.get("v", torch.zeros_like(p.data))
+                grad = p.grad.data
+                adjusted_lr = lr * math.sqrt(1 - beta2**t) / (1 - beta1**t)
+                p.data = (1 - lr*weight_decay) * p.data
+                m = beta1 * m + (1 - beta1) * grad
+                v = beta2 * v + (1 - beta2) * grad ** 2
+                p.data = p.data - adjusted_lr * m / (torch.sqrt(v) + eps)
+                state["t"] = t + 1
+                state["m"] = m
+                state["v"] = v
+
+
+
 def _sgd_trial():
     weight = torch.nn.Parameter(5 * torch.randn(10, 10))
     lrs = [1e1, 1e2, 1e3]
