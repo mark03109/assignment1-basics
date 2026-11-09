@@ -301,7 +301,7 @@ class MyFunctions:
                       "batch_size ... seq_len1 seq_len2, batch_size ... seq_len2 d_v -> batch_size ... seq_len1 d_v")
     
     def cross_entropy(logits: torch.Tensor, target):
-        """ -log(softmax(logitx)[target])"""
+        """-log(softmax(logitx)[target])"""
         max_val = torch.max(logits, dim=-1, keepdim=True).values
         logits = logits - max_val
         e_sum = logits.exp().sum(dim=-1, keepdim=True)
@@ -309,6 +309,19 @@ class MyFunctions:
         target_losses = losses.gather(dim=-1, index=target.unsqueeze(-1)).squeeze(-1)
         return target_losses.mean()
 
+    def cos_lr_schedule(t, lr_max, lr_min, t_w, t_c):
+        """impletement cosine learning rate sheduling"""
+        if t < t_w and t >= 0:
+            return t/t_w * lr_max
+        elif t >= t_w and t <= t_c:
+            return lr_min + (1 + math.cos((t - t_w)/(t_c - t_w) * math.pi))/2 * (lr_max - lr_min)
+        elif t > t_c:
+            return lr_min
+        else:
+            raise ValueError(f"Invalid current iteration t:{t}")
+
+    
+    
 def _softmax_trial():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     x = torch.randn(4, 4, device=device)
