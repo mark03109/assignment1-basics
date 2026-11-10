@@ -562,6 +562,8 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
+    MyFunctions.gradient_clipping(parameters, max_l2_norm)
+    return None
     raise NotImplementedError
 
 

@@ -3,6 +3,7 @@ from torch import nn
 import math
 from einops import einsum, rearrange
 from typing import Callable, Optional
+from collections.abc import Iterable
 
 class LinearModule(torch.nn.Module):
     def __init__(self, in_features, out_features, device=None, dtype=None):
@@ -264,8 +265,6 @@ class AdamW(torch.optim.Optimizer):
                 state["m"] = m
                 state["v"] = v
 
-
-
 def _sgd_trial():
     weight = torch.nn.Parameter(5 * torch.randn(10, 10))
     lrs = [1e1, 1e2, 1e3]
@@ -310,7 +309,7 @@ class MyFunctions:
         return target_losses.mean()
 
     def cos_lr_schedule(t, lr_max, lr_min, t_w, t_c):
-        """impletement cosine learning rate sheduling"""
+        """implement cosine learning rate sheduling"""
         if t < t_w and t >= 0:
             return t/t_w * lr_max
         elif t >= t_w and t <= t_c:
@@ -320,6 +319,21 @@ class MyFunctions:
         else:
             raise ValueError(f"Invalid current iteration t:{t}")
 
+    def gradient_clipping(params: Iterable[torch.nn.Parameter], max_val) -> None:
+        """implement gradient clipping, using eps = 1e-6. 
+        attention that param.grad may be None for some params and we need skip them
+        
+        """
+        g_norm2 = sum([param.grad.square().sum() for param in params if param.grad is not None] ).sqrt()
+        if g_norm2 < max_val:
+            return 
+        else:
+            for param in params:
+                if param.grad is not None:
+                    param.grad = param.grad * (max_val/(g_norm2 + 1e-6)) 
+            return 
+        
+        
     
     
 def _softmax_trial():
