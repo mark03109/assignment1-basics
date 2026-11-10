@@ -103,3 +103,100 @@ the results are:
 With a learning rate of 10, the loss decreased steadily; 
 at 100, it stayed nearly unchanged after the first step, then rapidly approached zero as the step size decayed. 
 At 1000, the loss diverged, reaching about 2.2e18 after ten iterations.
+
+problem(adamw_accounting):
+(a)
+    Notation:
+    B = batch_size, C = context_length, V = vocab_size,
+    L = num_layers, D = d_model, H = num_heads, F = d_ff = (8/3)D.
+    Each float32 element occupies 4 bytes.
+
+    Accounting assumptions:
+    For the problem's simplified activation accounting, count one retained output
+    for each listed operation. In particular, count each RMSNorm as one [B,C,D]
+    output, without expanding its internal square/mean/rsqrt temporaries.
+    Cross-entropy retains one [B,C,V] softmax/log-softmax tensor for backward
+    and one [B,C] tensor of per-token losses. Ignore the final scalar reduction.
+    Do not separately count unlisted input-embedding outputs, residual additions,
+    RoPE, masks, allocator overhead, or implementation-specific workspaces.
+
+    1. Parameters
+    Let P denote the number of trainable scalar parameters:
+        token embedding:             VD
+        attention projections:       4D^2 per block (Q, K, V, output)
+        SwiGLU weights:              3DF per block
+        two RMSNorm scale vectors:   2D per block
+        final RMSNorm scale vector:  D
+        output embedding:            VD
+
+    A single RMSNorm has D parameters, not D^2. Therefore,
+        P = 2VD + L(4D^2 + 3DF + 2D) + D
+          = 2VD + L(12D^2 + 2D) + D.
+
+        M_parameters = 4P
+                     = 4[2VD + L(12D^2 + 2D) + D] bytes.
+
+    2. Activations
+    The following counts are numbers of float32 elements, not bytes.
+    Each head has dimension D/H, so all H heads together contain D features.
+
+    Within one Transformer block:
+        component                         output shape(s)       element count
+        two RMSNorm outputs               2 x [B,C,D]           2BCD
+        Q, K, V projections               3 x [B,C,D]           3BCD
+        QK^T attention scores             [B,H,C,C]             BHC^2
+        attention softmax                 [B,H,C,C]             BHC^2
+        weighted sum of values            [B,H,C,D/H]           BCD
+        attention output projection       [B,C,D]               BCD
+        two SwiGLU expanding projections  2 x [B,C,F]           2BCF
+        SiLU on the gate branch           [B,C,F]               BCF
+        element-wise gate/value product   [B,C,F]               BCF
+        SwiGLU contracting projection     [B,C,D]               BCD
+
+    The SwiGLU expanding weights are W1 and W3 in module.py; W2 projects back
+    to D. Their names do not affect the count. Reshaping Q/K/V into heads does
+    not count as another copy, and causal masking does not halve dense storage.
+
+        A_block = 8BCD + 4BCF + 2BHC^2
+                = (56/3)BCD + 2BHC^2.
+
+    After the L blocks:
+        final RMSNorm output:             BCD
+        output embedding / logits:        BCV
+        cross-entropy probabilities:       BCV
+        per-token losses:                 BC
+
+    Hence the total activation element count and memory are
+        A = L[(56/3)BCD + 2BHC^2] + BCD + 2BCV + BC
+          = BC[L((56/3)D + 2HC) + D + 2V + 1],
+
+        M_activations = 4A
+                      = 4BC[L((56/3)D + 2HC) + D + 2V + 1] bytes.
+
+    The BCV cross-entropy term is the probability/log-probability tensor needed
+    for backward, not the scalar loss. If per-token losses are neglected as a
+    lower-order term, omit the final +1 inside the brackets.
+
+    3. Gradients
+    Each trainable parameter has one float32 parameter gradient of the same shape:
+        M_gradients = 4P
+                    = 4[2VD + L(12D^2 + 2D) + D] bytes.
+    B and C do not multiply this count: token contributions accumulate into the
+    same parameter-gradient tensors. Intermediate activation gradients/workspaces
+    are outside this simplified count.
+
+    4. AdamW optimizer state
+    AdamW keeps a first-moment vector m and a second-moment vector v, each with
+    P float32 elements. Ignoring small step counters and scalar hyperparameters,
+        M_optimizer_state = 8P
+                          = 8[2VD + L(12D^2 + 2D) + D] bytes.
+
+    5. Total simplified peak-memory estimate
+        M_peak = M_parameters + M_activations + M_gradients + M_optimizer_state
+               = 16P + 4A
+               = 16[2VD + L(12D^2 + 2D) + D]
+                 + 4BC[L((56/3)D + 2HC) + D + 2V + 1] bytes.
+
+    Equivalently,
+        M_peak = 32VD + 192LD^2 + (32L + 16)D
+                 + 4BC[L((56/3)D + 2HC) + D + 2V + 1] bytes.
