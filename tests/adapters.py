@@ -514,6 +514,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
+    return MyFunctions.data_loader(dataset, batch_size, context_length, device)
     raise NotImplementedError
 
 

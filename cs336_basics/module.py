@@ -4,6 +4,7 @@ import math
 from einops import einsum, rearrange
 from typing import Callable, Optional
 from collections.abc import Iterable
+import numpy as np
 
 class LinearModule(torch.nn.Module):
     def __init__(self, in_features, out_features, device=None, dtype=None):
@@ -332,6 +333,25 @@ class MyFunctions:
                 if param.grad is not None:
                     param.grad = param.grad * (max_val/(g_norm2 + 1e-6)) 
             return 
+
+    def data_loader(x: np.array, batch_size, context_length, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+        """ implement data loader: transform long token sequence to (batch_size, context_length)"""
+        # 注意这里不能不能dtype = x.dtype, np的和torch的这里不能互通
+        input_tokens = torch.zeros(batch_size, context_length, device = device, dtype = torch.long)
+        test_tokens = torch.zeros(batch_size, context_length, device = device, dtype = torch.long)
+        
+        #这里我么采取的策略是一个随机取不重复的开头索引，来过测试
+        starts = np.random.randint(
+            low=0,
+            high=len(x) - context_length,
+            size=batch_size,
+        )
+
+        for i in range(batch_size):
+            input_tokens[i] = torch.Tensor(x[starts[i]: context_length + starts[i]])
+            test_tokens[i] = torch.Tensor(x[starts[i]+1: context_length + starts[i] + 1])
+        
+        return input_tokens, test_tokens
         
         
     
