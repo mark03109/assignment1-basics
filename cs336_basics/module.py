@@ -5,6 +5,8 @@ from einops import einsum, rearrange
 from typing import Callable, Optional
 from collections.abc import Iterable
 import numpy as np
+import os
+from typing import IO, Any, BinaryIO
 
 class LinearModule(torch.nn.Module):
     def __init__(self, in_features, out_features, device=None, dtype=None):
@@ -352,8 +354,22 @@ class MyFunctions:
             test_tokens[i] = torch.Tensor(x[starts[i]+1: context_length + starts[i] + 1])
         
         return input_tokens, test_tokens
-        
-        
+
+class Checkpoint:
+    def save_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer,
+                         iteration: int, out: str | os.PathLike | BinaryIO | IO[bytes]):
+        obj_model = model.state_dict()
+        obj_optimizer = optimizer.state_dict()
+        obj: dict = {"obj_model": obj_model, "obj_optimizer": obj_optimizer, "iteration": iteration}
+        torch.save(obj, out)
+        return
+    
+    def load_checkpoint(src:str | os.PathLike | BinaryIO | IO[bytes],
+                         model: nn.Module, optimizer: torch.optim.Optimizer) -> int:
+        obj = torch.load(src)
+        model.load_state_dict(obj.get("obj_model"))
+        optimizer.load_state_dict(obj.get("obj_optimizer"))
+        return obj.get("iteration")
     
     
 def _softmax_trial():

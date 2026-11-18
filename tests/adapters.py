@@ -11,7 +11,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor, nn
 import regex as re
 import pickle
-from cs336_basics.module import LinearModule, EmbeddingModule, RMSNorm, Swiglu, RotaryPositionalEmbedding, MyFunctions
+from cs336_basics.module import LinearModule, EmbeddingModule, RMSNorm, Swiglu, RotaryPositionalEmbedding, MyFunctions, Checkpoint
 from cs336_basics.module import MultiHeadAttention, TransformerBlock, TransformerLM
 from cs336_basics.module import AdamW
 
@@ -621,6 +621,8 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
+    Checkpoint.save_checkpoint(model, optimizer, iteration, out)
+    return
     raise NotImplementedError
 
 def run_load_checkpoint(
@@ -641,6 +643,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
+    return Checkpoint.load_checkpoint(src, model, optimizer)
     raise NotImplementedError
 
 
