@@ -338,6 +338,7 @@ class MyFunctions:
 
     def data_loader(x: np.array, batch_size, context_length, device: str) -> tuple[torch.Tensor, torch.Tensor]:
         """ implement data loader: transform long token sequence to (batch_size, context_length)"""
+        """ we can use a Unix system call mmap if the dataset x is too large to load into the memory"""
         # 注意这里不能不能dtype = x.dtype, np的和torch的这里不能互通
         input_tokens = torch.zeros(batch_size, context_length, device = device, dtype = torch.long)
         test_tokens = torch.zeros(batch_size, context_length, device = device, dtype = torch.long)
@@ -370,7 +371,30 @@ class Checkpoint:
         model.load_state_dict(obj.get("obj_model"))
         optimizer.load_state_dict(obj.get("obj_optimizer"))
         return obj.get("iteration")
-    
+
+class DecodeStrategy:
+    """receive the softmaxed output probabilities, use a method to determine the next token and return it"""
+    def greedy(out_logits: torch.Tensor):
+        """no need to softmax, just grad"""
+        last_logits = out_logits[-1,:]
+        return torch.max(last_logits, -1).indices
+
+    def sample_p(out_logits: torch.Tensor, temperature, p):
+        """Sample from the smallest prefix with cumulative probability at least p."""
+        last_logits = out_logits[-1, :]
+        out_probs = MyFunctions.softmax(last_logits / temperature)
+
+        sorted_probs, indices = torch.sort(out_probs, descending=True)
+        prob_sum = 0
+        index = sorted_probs.numel() - 1
+        for i in range(sorted_probs.numel()):
+            prob_sum += sorted_probs[i]
+            if prob_sum >= p:
+                index = i
+                break
+        sampled_position = torch.multinomial(sorted_probs[:index + 1], num_samples=1)
+        return indices[sampled_position][0]
+             
     
 def _softmax_trial():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

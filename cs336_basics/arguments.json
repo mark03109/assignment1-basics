@@ -39,5 +39,10 @@
 
         "data_path": ""
         
+    },
+
+    "generator":{
+        "temperature": 0.7,
+        "probability": 0.85
     }
 }

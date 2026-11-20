@@ -4,20 +4,22 @@ from collections.abc import Iterable, Iterator
 import os
 
 class Tokenizer:
-    def __init__(self, vocab, merges, special_tokens = None):
+    def __init__(self, vocab, merges, special_words = None):
         self.vocab: dict[int, bytes] = vocab
         self.merges: list[tuple[bytes, bytes]] = merges
-        self.special_tokens: list[str] | None = special_tokens
+        self.special_words: list[str] | None = special_words
         self.vocab_reverse: dict[bytes, int] = {v: k for k, v in vocab.items()}
+        self.special_tokens: list[int] = {self.vocab_reverse[w.encode("utf-8")] for w in self.special_words}
+        
         # self.quick_merge: dict[bytes, list[tuple[bytes, bytes]]] = {}
     
     @classmethod
-    def from_files(cls, vocab_filepath, merges_filepath, special_tokens = None):
+    def from_files(cls, vocab_filepath, merges_filepath, special_words = None):
         with open(vocab_filepath, "rb") as f1:
             vocab = pickle.load(f1)
         with open(merges_filepath, "rb") as f2:
             merges = pickle.load(f2)
-        return cls(vocab, merges, special_tokens)
+        return cls(vocab, merges, special_words)
 
     def encode(self, text: str) -> list[int]:
         PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -32,7 +34,7 @@ class Tokenizer:
             if temp_word in word_int_dict:
                 indices.extend(word_int_dict[temp_word])
             else:
-                if temp_word in self.special_tokens:
+                if temp_word in self.special_words:
                     word_int_dict[temp_word] = [self.vocab[temp_word.encode("utf-8")]]
                     indices.extend(word_int_dict[temp_word])
                 else:
@@ -68,8 +70,8 @@ if __name__ == "__main__":
     # vocab = {0: b' ', 1: b'a', 2: b'c', 3: b'e', 4: b'h', 5: b't',
     #           6: b'th', 7: b' c', 8: b' a', 9: b'the', 10: b' at'}
     # merges = [(b't', b'h'), (b' ', b'c'), (b' ', b'a'), (b'th', b'e'), (b' a', b't')]
-    # special_tokens = ["<|endoftext|>"]
-    # tokenizer = Tokenizer(vocab, merges, special_tokens)
+    # special_words = ["<|endoftext|>"]
+    # tokenizer = Tokenizer(vocab, merges, special_words)
     # indices = tokenizer.encode("the cat ate")
     # print(indices)
     # tokens = tokenizer.encode_iterable(["the", " cat", " ate"])
@@ -83,7 +85,7 @@ if __name__ == "__main__":
     # print(tokenizer.decode(indices1))
     tokenizer = Tokenizer.from_files(vocab_filepath="data/TinyStoriesV2-GPT4-train-vocab.pkl", 
                                      merges_filepath="data/TinyStoriesV2-GPT4-train-merges.pkl", 
-                                     special_tokens=["<|endoftext|>"])
+                                     special_words=["<|endoftext|>"])
     fd = open("test.txt")
     text = fd.read(-1)
     tokens = tokenizer.encode(text)
