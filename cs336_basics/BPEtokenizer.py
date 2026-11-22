@@ -7,7 +7,7 @@ class Tokenizer:
     def __init__(self, vocab, merges, special_words = None):
         self.vocab: dict[int, bytes] = vocab
         self.merges: list[tuple[bytes, bytes]] = merges
-        self.special_words: list[str] | None = special_words
+        self.special_words: list[str] = special_words or []
         self.vocab_reverse: dict[bytes, int] = {v: k for k, v in vocab.items()}
         self.special_tokens: list[int] = {self.vocab_reverse[w.encode("utf-8")] for w in self.special_words}
         
@@ -23,7 +23,20 @@ class Tokenizer:
 
     def encode(self, text: str) -> list[int]:
         PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-        string_iter = re.finditer(PAT, text)
+        special_pattern = "|".join(
+            re.escape(word) for word in sorted(self.special_words, key=len, reverse=True) if word
+        )
+
+        def iter_matches():
+            start = 0
+            if special_pattern:
+                for match in re.finditer(special_pattern, text):
+                    yield from re.finditer(PAT, text, pos=start, endpos=match.start())
+                    yield match
+                    start = match.end()
+            yield from re.finditer(PAT, text, pos=start)
+
+        string_iter = iter_matches()
         word_int_dict: dict[str, list[int]] = {}
         indices: list[int] = []
         while True:
@@ -35,7 +48,7 @@ class Tokenizer:
                 indices.extend(word_int_dict[temp_word])
             else:
                 if temp_word in self.special_words:
-                    word_int_dict[temp_word] = [self.vocab[temp_word.encode("utf-8")]]
+                    word_int_dict[temp_word] = [self.vocab_reverse[temp_word.encode("utf-8")]]
                     indices.extend(word_int_dict[temp_word])
                 else:
                     temp_word_bytes_list: list[bytes] = list(bytes([b]) for b in temp_word.encode("utf-8"))

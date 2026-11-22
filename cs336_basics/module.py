@@ -185,7 +185,7 @@ class TransformerLM(nn.Module):
                  device = None, dtype = None, ropes: list[RotaryPositionalEmbedding] | None = None):
         super().__init__()
         self.num_layers = num_layers
-        self.embedding = EmbeddingModule(vocab_size, d_model)
+        self.embedding = EmbeddingModule(vocab_size, d_model, device)
         self.transformer_blocks = nn.ModuleList(
             TransformerBlock(d_model, num_heads, d_ff, device, dtype, None if ropes is None else ropes[i])
             for i in range(num_layers)

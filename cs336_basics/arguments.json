@@ -1,10 +1,10 @@
 {
-    "data_path": "",
+    "data_path": "data/TinyStoriesV2-GPT4-train.txt",
 
     "train":{
-        "epochs": 100,
+        "max_steps": 10000,
         "batch_size": 128,
-        "context_length": 32
+        "context_length": 256
     },
 
     "embedding_module":{
@@ -12,10 +12,10 @@
     },
 
     "transformer":{
-        "num_layers": 8, 
-        "num_heads": 8,
-        "d_ff": 512,
-        "vocab_size": 1024,
+        "num_layers": 4, 
+        "num_heads": 16,
+        "d_ff": 1344,
+        "vocab_size": 10000,
         "rope_theta": 10000
     },
 
@@ -29,16 +29,13 @@
 
     "tokenizer":{
         "name": "BPETokenizer",
-        "if_train": true,
+        "if_trained": true,
         "train_input_path": "",
         "vocab_size": 1024,
         "special_tokens": ["<|endoftext|>"],
 
-        "vocab_file_path": "",
-        "merges_file_path": "",
-
-        "data_path": ""
-        
+        "vocab_file_path": "data/TinyStoriesV2-GPT4-train-vocab.pkl",
+        "merges_file_path": "data/TinyStoriesV2-GPT4-train-merges.pkl"
     },
 
     "generator":{
