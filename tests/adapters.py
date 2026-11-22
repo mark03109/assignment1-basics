@@ -772,7 +772,7 @@ def run_train_bpe(
     vocabulary: dict[int, bytes] = {}
     merges: list[tuple[bytes, bytes]] = [] 
     for i in range(256):
-        vocabulary[i] = chr(i).encode("utf-8")
+        vocabulary[i] = bytes([i])
     for i in range(len(special_tokens)):
         vocabulary[256 + i] = special_tokens[i].encode("utf-8") 
 
