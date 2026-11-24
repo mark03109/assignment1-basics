@@ -303,13 +303,12 @@ class MyFunctions:
                       "batch_size ... seq_len1 seq_len2, batch_size ... seq_len2 d_v -> batch_size ... seq_len1 d_v")
     
     def cross_entropy(logits: torch.Tensor, target):
-        """-log(softmax(logitx)[target])"""
+        """Mean negative log-likelihood of the target tokens."""
         max_val = torch.max(logits, dim=-1, keepdim=True).values
-        logits = logits - max_val
-        e_sum = logits.exp().sum(dim=-1, keepdim=True)
-        losses = e_sum.log() - logits
-        target_losses = losses.gather(dim=-1, index=target.unsqueeze(-1)).squeeze(-1)
-        return target_losses.mean()
+        shifted_logits = logits - max_val
+        target_logits = shifted_logits.gather(dim=-1, index=target.unsqueeze(-1))
+        log_normalizer = shifted_logits.exp().sum(dim=-1, keepdim=True).log()
+        return (log_normalizer - target_logits).mean()
 
     def cos_lr_schedule(t, lr_max, lr_min, t_w, t_c):
         """implement cosine learning rate sheduling"""

@@ -3,7 +3,7 @@
 
     "train":{
         "max_steps": 10000,
-        "batch_size": 128,
+        "batch_size": 64,
         "context_length": 256
     },
 

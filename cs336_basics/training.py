@@ -16,6 +16,7 @@ class ArgumentsLoader():
             self.args: dict = json.load(f)
 
     def load_tokenizer(self):
+        print("loading tokenizer")
         tknz_args = self.args.get("tokenizer")
 
         if tknz_args.get("if_trained") is False or None:
@@ -24,7 +25,7 @@ class ArgumentsLoader():
             pickle.dump(vocab, tknz_args.get("vocab_file_path"))
             pickle.dump(merges, tknz_args.get("merges_file_pth"))
 
-            self.args["tokenizer"]["id_trained"] = True
+            self.args["tokenizer"]["if_trained"] = True
 
             with open(self.args_path, "w", encoding=" utf-8") as f:
                 json.dump(self.args, f, ensure_ascii= False, indent=2)
@@ -37,6 +38,7 @@ class Train(ArgumentsLoader):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def tokenize_data(self):
+        print("tokenizing data")
         mp = np.memmap(self.args.get("data_path"), dtype= np.uint8, mode = 'r')
         text = str(mp, encoding = "utf-8")
         indicies = self.tokenizer.encode(text)
@@ -46,6 +48,7 @@ class Train(ArgumentsLoader):
     def train_loop(self):
         self.load_tokenizer()
         self.tokenize_data()
+        print("start loop")
 
         trn_args = self.args.get("train")
         context_length = trn_args.get("context_length")
@@ -77,7 +80,7 @@ class Train(ArgumentsLoader):
         adamW = AdamW(params, adamW_args.get("learning_rate"), adamW_args.get("weight_decay"), 
                       (adamW_args.get("beta1"), adamW_args.get("beta2")), adamW_args.get("eps"))
 
-        with open("log/run_001.csv", 'w', newline="", encoding="utf-8") as log_file:
+        with open("log/run_002.csv", 'w', newline="", encoding="utf-8") as log_file:
             writer = csv.writer(log_file)
             writer.writerow(["step", "elapsed_seconds", "split", "loss"])
             start = perf_counter()
@@ -91,7 +94,7 @@ class Train(ArgumentsLoader):
                 loss.backward()
                 adamW.step()
 
-                Checkpoint.save_checkpoint(transformer_lm, adamW, step, "data/run_001.pt")
+                Checkpoint.save_checkpoint(transformer_lm, adamW, step, "data/run_002.pt")
                 train_loss = loss.item()
                 writer.writerow([step, perf_counter() - start, "train", train_loss])
 
