@@ -7,6 +7,7 @@ from collections.abc import Iterable
 import numpy as np
 import os
 from typing import IO, Any, BinaryIO
+import json
 
 class LinearModule(torch.nn.Module):
     def __init__(self, in_features, out_features, device=None, dtype=None):
@@ -107,6 +108,17 @@ class RotaryPositionalEmbedding(nn.Module):
             "sin_cache", angles.sin(), persistent = False
         ) # [max_seq_len, d_k//2]
 
+    @classmethod
+    def from_files(cls, arguments_path, device = None):
+        with open(arguments_path, "r", encoding= "utf-8") as f:
+            args = json.load(f)
+            num_heads = args["transformer"]["num_heads"]
+            d_model = args["embedding_module"]["embedding_dim"]
+            assert d_model % num_heads == 0
+            d_head = d_model // num_heads
+            return cls(args["transformer"]["rope_theta"], d_head , 
+                       args["train"]["context_length"], device)
+    
     def forward(self, x: torch.tensor, token_positions: torch.Tensor) -> torch.Tensor:
         # x [..., seq_len, d_k], token_positions [..., seq_len], d_k is dimension of query and key vectors
         
@@ -185,6 +197,7 @@ class TransformerLM(nn.Module):
                  device = None, dtype = None, ropes: list[RotaryPositionalEmbedding] | None = None):
         super().__init__()
         self.num_layers = num_layers
+        self.context_length = context_length
         self.embedding = EmbeddingModule(vocab_size, d_model, device)
         self.transformer_blocks = nn.ModuleList(
             TransformerBlock(d_model, num_heads, d_ff, device, dtype, None if ropes is None else ropes[i])
@@ -193,6 +206,26 @@ class TransformerLM(nn.Module):
         self.extra_norm = RMSNorm(d_model)
         self.linear = LinearModule(d_model, vocab_size)
 
+    @classmethod
+    def from_files(cls, arguments_path: str | os.PathLike, device = None, dtype = None, 
+                   ropes: list[RotaryPositionalEmbedding] | None = None):
+        with open(arguments_path, "r", encoding="utf-8") as f:
+            args = json.load(f)
+            embd_args = args["embedding_module"]
+            trnsfmr_args = args["transformer"]
+            trn_args = args["train"]
+            return cls(
+                embd_args["embedding_dim"],
+                trnsfmr_args["num_heads"],
+                trnsfmr_args["d_ff"],
+                trnsfmr_args["vocab_size"],
+                trn_args["context_length"],
+                trnsfmr_args["num_layers"],
+                device,
+                dtype,
+                ropes,
+            )
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding(x)
         for i in range(self.num_layers):

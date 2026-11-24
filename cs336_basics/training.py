@@ -100,28 +100,6 @@ class Train(ArgumentsLoader):
 
         return transformer_lm
             
-class Generator(ArgumentsLoader):
-    def __init__(self, arguments_path, type: str):
-        super().__init__(arguments_path)
-        if type == "greedy":
-            self.func = DecodeStrategy.greedy
-        elif type == "sample_p":
-            self.func = DecodeStrategy.sample_p
-        else:
-            self.func = DecodeStrategy.sample_p
-        self.load_tokenizer()
-        
-    def decode_loop(self, model: TransformerLM, prompt: str):
-        input_tokens = self.tokenizer.encode(prompt)
-        input_tokens_len = len(input_tokens)
-        while True:
-            logits = model(torch.Tensor(input_tokens))
-            gntr_args = self.args["generator"]
-            next_token = self.func(logits, gntr_args["temperature"], gntr_args["probability"])
-            if next_token in self.tokenizer.special_tokens:
-                break
-            input_tokens.append(next_token)
-        return self.tokenizer.decode(input_tokens[input_tokens_len:])
 
 if __name__ == "__main__":
     my_train = Train("cs336_basics/arguments.json")

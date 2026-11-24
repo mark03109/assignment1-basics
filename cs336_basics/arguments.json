@@ -31,7 +31,6 @@
         "name": "BPETokenizer",
         "if_trained": true,
         "train_input_path": "",
-        "vocab_size": 1024,
         "special_tokens": ["<|endoftext|>"],
 
         "vocab_file_path": "data/TinyStoriesV2-GPT4-train-vocab.pkl",
@@ -39,7 +38,7 @@
     },
 
     "generator":{
-        "temperature": 0.7,
+        "temperature": 0.5,
         "probability": 0.85
     }
 }
