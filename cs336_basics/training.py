@@ -32,10 +32,63 @@ class ArgumentsLoader():
         
         self.tokenizer = Tokenizer.from_files(tknz_args.get("vocab_file_path"), tknz_args.get("merges_file_path"), tknz_args.get("special_tokens"))
 
-class Train(ArgumentsLoader):
+class GetModel(ArgumentsLoader):
+    def __init__(self, arguments_path):
+        super().__init__(arguments_path)
+        self.trn_args = self.args.get("train")
+        self.context_length = self.trn_args.get("context_length")
+        self.batch_size = self.trn_args.get("batch_size")
+        self.embd_args = self.args.get("embedding_module")
+        self.trnsfmr_args = self.args.get("transformer")
+        self.d_model = self.embd_args.get("embedding_dim")
+        self.num_layers = self.trnsfmr_args.get("num_layers")
+        self.rope_theta = self.trnsfmr_args.get("rope_theta")
+        self.num_heads = self.trnsfmr_args.get("num_heads")
+        self.vocab_size = self.trnsfmr_args.get("vocab_size")
+        self.d_ff = self.trnsfmr_args.get("d_ff")
+        self.adamW_args = self.args.get("adamW")
+        self.lr = self.adamW_args.get("learning_rate")
+        self.weight_decay = self.adamW_args.get("weight_decay")
+        self.beta1 = self.adamW_args.get("beta1")
+        self.beta2 = self.adamW_args.get("beta2")
+        self.eps = self.adamW_args.get("eps")
+
+    def get_ropes_from_files(self, device = None, dtype = None) -> list[RotaryPositionalEmbedding]:
+        ropes: list[RotaryPositionalEmbedding] = []
+        assert self.d_model % self.num_heads == 0
+        d_head = self.d_model // self.num_heads
+        for i in range(self.num_layers):
+            ropes.append(RotaryPositionalEmbedding(theta = self.rope_theta, d_k = d_head,
+                                                    max_seq_len= self.context_length, device = device, dtype = dtype))
+        return ropes
+    
+    def get_tansformerlm_from_files(self, device = None, dtype = None) -> TransformerLM:
+        ropes = self.get_ropes_from_files(device, dtype)
+        return TransformerLM(self.d_model, self.num_heads, self.d_ff, self.vocab_size, 
+                             self.context_length, self.num_layers, device, dtype, ropes)
+
+    def get_get_model_optimizer_from_files(self, device = None, dtype = None):
+        transformer_lm = self.get_tansformerlm_from_files(device, dtype)
+        adamW = AdamW(transformer_lm.parameters(recurse=True),self.lr, self.weight_decay, (self.beta1, self.beta2), self.eps)
+        return transformer_lm, adamW
+
+    def get_transformerlm_from_pt(self, pt_path, device = None, dtype = None) -> TransformerLM:
+        obj = torch.load(pt_path, map_location= "cpu", weights_only= True)
+        transformer_lm = self.get_tansformerlm_from_files(device, dtype, None)
+        transformer_lm.load_state_dict(obj["obj_model"])
+        return transformer_lm.to(self.device).eval()
+
+    def get_model_optimizer_from_pt(self, pt_path, device = None, dtype = None):
+        transformer_lm = self.get_transformerlm_from_pt(pt_path, device, dtype)
+        obj = torch.load(pt_path, map_location="cpu", weights_only=True)
+        adamW = AdamW(transformer_lm.parameters(recurse=True),self.lr, self.weight_decay, (self.beta1, self.beta2), self.eps)
+        return transformer_lm, adamW
+
+class Train(GetModel):
     def __init__(self, arguments_path):
         super().__init__(arguments_path)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.max_steps = self.args["train"]["max_steps"]
 
     def tokenize_data(self):
         print("tokenizing data")
@@ -45,61 +98,56 @@ class Train(ArgumentsLoader):
         self.input = torch.Tensor(indicies)
         return indicies
 
-    def train_loop(self):
+    def train_loop(self, log_file, pt_file):
         self.load_tokenizer()
         self.tokenize_data()
         print("start loop")
 
-        trn_args = self.args.get("train")
-        context_length = trn_args.get("context_length")
-        batch_size = trn_args.get("batch_size")
+        transformer_lm, adamW = self.get_model_optimizer_from_files(self.device)
 
-        embd_args = self.args.get("embedding_module")
-        trnsfmr_args = self.args.get("transformer")
-
-        ropes: list[RotaryPositionalEmbedding] = []
-        d_model = embd_args.get("embedding_dim")
-        num_layers = trnsfmr_args.get("num_layers")
-        rope_theta = trnsfmr_args.get("rope_theta")
-        num_heads = trnsfmr_args.get("num_heads")
-        vocab_size = trnsfmr_args.get("vocab_size")
-        d_ff = trnsfmr_args.get("d_ff")
-        adamW_args = self.args.get("adamW")
-        
-        assert d_model % num_heads == 0
-        d_head = d_model // num_heads
-        for i in range(num_layers):
-            ropes.append(RotaryPositionalEmbedding(theta = rope_theta, d_k = d_head,
-                                                    max_seq_len= context_length, device = self.device))
-
-        transformer_lm = TransformerLM(d_model, num_heads, d_ff, vocab_size, context_length,
-                                        num_layers, self.device, ropes = ropes)
-        transformer_lm.to(self.device)
-        params = transformer_lm.parameters(recurse= True)
-        
-        adamW = AdamW(params, adamW_args.get("learning_rate"), adamW_args.get("weight_decay"), 
-                      (adamW_args.get("beta1"), adamW_args.get("beta2")), adamW_args.get("eps"))
-
-        with open("log/run_002.csv", 'w', newline="", encoding="utf-8") as log_file:
-            writer = csv.writer(log_file)
+        with open(log_file, 'w', newline="", encoding="utf-8") as lg:
+            writer = csv.writer(lg)
             writer.writerow(["step", "elapsed_seconds", "split", "loss"])
             start = perf_counter()
 
-            for step in range(trn_args.get("max_steps")):
+            for step in range(self.max_steps):
                 input_ids, target_ids = MyFunctions.data_loader(self.input, 
-                                batch_size, context_length, self.device)
+                                self.batch_size, self.context_length, self.device)
                 adamW.zero_grad(set_to_none=True)
                 logits: torch.Tensor = transformer_lm(input_ids)
                 loss = MyFunctions.cross_entropy(logits, target_ids.long())
                 loss.backward()
                 adamW.step()
 
-                Checkpoint.save_checkpoint(transformer_lm, adamW, step, "data/run_002.pt")
+                Checkpoint.save_checkpoint(transformer_lm, adamW, step, pt_file)
                 train_loss = loss.item()
                 writer.writerow([step, perf_counter() - start, "train", train_loss])
 
         return transformer_lm
             
+    def continue_training_loop(self, log_file, pt_file):
+        self.load_tokenizer()
+        self.tokenize_data()
+        transformer_lm, adamW = self.get_transformerlm_from_pt("data/run")
+        obj = torch.load(pt_file)
+        initial_step = obj["step"]
+
+        with open(log_file, "w", encoding= "utf-8") as lg:
+            writer = csv.writer()
+            start = perf_counter()
+
+            for step in range(initial_step+1, self.max_steps):
+                input_ids, target_ids = MyFunctions.data_loader(self.input, 
+                self.batch_size, self.context_length, self.device)
+                adamW.zero_grad(set_to_none=True)
+                logits: torch.Tensor = transformer_lm(input_ids)
+                loss = MyFunctions.cross_entropy(logits, target_ids.long())
+                loss.backward()
+                adamW.step()
+
+                Checkpoint.save_checkpoint(transformer_lm, adamW, step, pt_file)
+                train_loss = loss.item()
+                writer.writerow([step, perf_counter() - start, "train", train_loss])
 
 if __name__ == "__main__":
     my_train = Train("cs336_basics/arguments.json")

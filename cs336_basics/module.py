@@ -204,27 +204,7 @@ class TransformerLM(nn.Module):
             for i in range(num_layers)
         )
         self.extra_norm = RMSNorm(d_model)
-        self.linear = LinearModule(d_model, vocab_size)
-
-    @classmethod
-    def from_files(cls, arguments_path: str | os.PathLike, device = None, dtype = None, 
-                   ropes: list[RotaryPositionalEmbedding] | None = None):
-        with open(arguments_path, "r", encoding="utf-8") as f:
-            args = json.load(f)
-            embd_args = args["embedding_module"]
-            trnsfmr_args = args["transformer"]
-            trn_args = args["train"]
-            return cls(
-                embd_args["embedding_dim"],
-                trnsfmr_args["num_heads"],
-                trnsfmr_args["d_ff"],
-                trnsfmr_args["vocab_size"],
-                trn_args["context_length"],
-                trnsfmr_args["num_layers"],
-                device,
-                dtype,
-                ropes,
-            )
+        self.linear = LinearModule(d_model, vocab_size)            
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding(x)

@@ -1,4 +1,4 @@
-from cs336_basics.training import ArgumentsLoader
+from cs336_basics.training import ArgumentsLoader, GetModel
 from cs336_basics.module import DecodeStrategy, TransformerLM, RotaryPositionalEmbedding
 import torch
 import json
@@ -14,19 +14,6 @@ class Generator(ArgumentsLoader):
             self.func = DecodeStrategy.sample_p
         self.load_tokenizer()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    def get_model(self, pt_path, arguments_path):
-        ropes = []
-        num_layers = 1
-        with open(arguments_path, "r", encoding="utf-8") as f:
-            args = json.load(f)
-            num_layers = args["transformer"]["num_layers"]
-        for i in range(num_layers):
-            ropes.append(RotaryPositionalEmbedding.from_files(arguments_path))
-        transformer_lm = TransformerLM.from_files(arguments_path, ropes=ropes)
-        obj = torch.load(pt_path, map_location="cpu", weights_only=True)
-        transformer_lm.load_state_dict(obj["obj_model"])
-        return transformer_lm.to(self.device).eval()
 
     @torch.inference_mode()
     def decode_loop(self, model: TransformerLM, prompt: str):
@@ -51,6 +38,7 @@ class Generator(ArgumentsLoader):
 
 if __name__ == "__main__":
     generator = Generator("cs336_basics/arguments.json")
-    transformer_lm = generator.get_model("data/run_002.pt", "cs336_basics/arguments.json")
+    get_model = GetModel("cs336_basics/arguments.json")
+    transformer_lm = get_model.get_model_from_files("data/run_002.pt", "cs336_basics/arguments.json")
     prompt = "Tom said"
     print(generator.decode_loop(transformer_lm, prompt))
